@@ -22,35 +22,37 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { authClient, useSession } from '@/lib/auth-client'
-import { Truck, Loader2, LogOut, Calendar, MapPin } from 'lucide-react'
+import { Truck, Loader2, LogOut, Calendar, MapPin, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
-interface Order {
+interface BaserowOrder {
   id: number
-  customerName: string
-  customerEmail: string
-  customerPhone: string
-  address: string
-  city: string
-  locationLat: number
-  locationLng: number
-  serviceType: string
-  inventoryItems: Array<{ name: string; quantity: number; inStock: boolean }>
-  inventoryStatus: string
-  priority: string
-  estimatedDuration: number
-  specialInstructions: string | null
-  status: string
-  createdAt: string
-  dueDate: string
+  Customer_Name: string
+  Customer_Email?: string
+  Customer_Phone?: string
+  Address: string
+  City: string
+  Location_Lat?: number
+  Location_Lng?: number
+  Service_Type: string
+  Status: string
+  Priority?: string
+  Partner_Assigned?: string
+  Technician_Name?: string
+  Install_Date?: string
+  Estimated_Duration?: number
+  Special_Instructions?: string
+  Inventory_Status?: string
+  Due_Date?: string
+  Created_At?: string
 }
 
 export default function Dashboard() {
   const router = useRouter()
   const { data: session, isPending, refetch } = useSession()
-  const [orders, setOrders] = useState<Order[]>([])
+  const [orders, setOrders] = useState<BaserowOrder[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<BaserowOrder | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   useEffect(() => {
@@ -61,29 +63,25 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (session?.user) {
-      fetchOrders()
+      fetchOrdersFromBaserow()
     }
   }, [session])
 
-  const fetchOrders = async () => {
+  const fetchOrdersFromBaserow = async () => {
     setIsLoading(true)
     try {
-      const token = localStorage.getItem('bearer_token')
-      const response = await fetch('/api/orders?status=Ready to Dispatch', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
+      // Call our API route that fetches from Baserow
+      const response = await fetch('/api/baserow/orders?status=Ready to Dispatch')
 
       if (!response.ok) {
-        throw new Error('Failed to fetch orders')
+        throw new Error('Failed to fetch orders from Baserow')
       }
 
       const data = await response.json()
       setOrders(data)
     } catch (error) {
       console.error('Error fetching orders:', error)
-      toast.error('Failed to load orders')
+      toast.error('Failed to load orders from Baserow')
     } finally {
       setIsLoading(false)
     }
@@ -101,17 +99,45 @@ export default function Dashboard() {
     }
   }
 
-  const handleScheduleClick = (order: Order) => {
+  const handleScheduleClick = (order: BaserowOrder) => {
     setSelectedOrder(order)
     setIsDialogOpen(true)
   }
 
-  const handleScheduleConfirm = () => {
-    // Navigate to calendar with the selected order
-    if (selectedOrder) {
+  const handleScheduleConfirm = async () => {
+    if (!selectedOrder) return
+
+    try {
+      // Update order status in Baserow
+      const response = await fetch('/api/baserow/orders/schedule', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: selectedOrder.id,
+          status: '3-Scheduled',
+          technicianName: session?.user.name || 'Assigned',
+          installDate: new Date().toISOString().split('T')[0]
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to schedule order')
+      }
+
+      toast.success('Order scheduled successfully!')
+      setIsDialogOpen(false)
+      
+      // Refresh the orders list
+      fetchOrdersFromBaserow()
+      
+      // Navigate to calendar
       router.push(`/calendar?orderId=${selectedOrder.id}`)
+    } catch (error) {
+      console.error('Error scheduling order:', error)
+      toast.error('Failed to schedule order')
     }
-    setIsDialogOpen(false)
   }
 
   if (isPending || isLoading) {
@@ -143,14 +169,25 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              onClick={handleSignOut}
-              className="gap-2"
-            >
-              <LogOut className="w-4 h-4" />
-              Sign Out
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="secondary"
+                onClick={fetchOrdersFromBaserow}
+                size="sm"
+                className="gap-2"
+              >
+                <Loader2 className="w-4 h-4" />
+                Refresh
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleSignOut}
+                className="gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -163,7 +200,7 @@ export default function Dashboard() {
               <div>
                 <CardTitle className="text-2xl">Orders Ready to Dispatch</CardTitle>
                 <CardDescription>
-                  View and schedule orders that are ready for field service
+                  View and schedule orders from Baserow that are ready for field service
                 </CardDescription>
               </div>
               <Badge variant="secondary" className="text-lg px-4 py-2">
@@ -177,7 +214,7 @@ export default function Dashboard() {
                 <Truck className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
                 <h3 className="text-lg font-semibold mb-2">No Orders Ready to Dispatch</h3>
                 <p className="text-muted-foreground">
-                  All orders have been scheduled or there are no pending orders.
+                  All orders have been scheduled or there are no pending orders in Baserow.
                 </p>
               </div>
             ) : (
@@ -188,6 +225,7 @@ export default function Dashboard() {
                       <TableHead className="w-[100px]">Order ID</TableHead>
                       <TableHead>Customer Name</TableHead>
                       <TableHead>City</TableHead>
+                      <TableHead>Service Type</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -195,8 +233,11 @@ export default function Dashboard() {
                     {orders.map((order) => (
                       <TableRow key={order.id}>
                         <TableCell className="font-medium">#{order.id}</TableCell>
-                        <TableCell>{order.customerName}</TableCell>
-                        <TableCell>{order.city}</TableCell>
+                        <TableCell>{order.Customer_Name}</TableCell>
+                        <TableCell>{order.City}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{order.Service_Type}</Badge>
+                        </TableCell>
                         <TableCell className="text-right">
                           <Button
                             onClick={() => handleScheduleClick(order)}
@@ -223,7 +264,7 @@ export default function Dashboard() {
           <DialogHeader>
             <DialogTitle>Schedule Order</DialogTitle>
             <DialogDescription>
-              Review order details before scheduling
+              Review order details before scheduling in Baserow
             </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
@@ -235,41 +276,50 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Customer:</span>
-                  <span className="text-sm">{selectedOrder.customerName}</span>
+                  <span className="text-sm">{selectedOrder.Customer_Name}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Phone:</span>
-                  <span className="text-sm">{selectedOrder.customerPhone}</span>
-                </div>
+                {selectedOrder.Customer_Phone && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Phone:</span>
+                    <span className="text-sm">{selectedOrder.Customer_Phone}</span>
+                  </div>
+                )}
                 <div className="flex items-start justify-between">
                   <span className="text-sm font-medium">Address:</span>
                   <span className="text-sm text-right max-w-[200px]">
-                    {selectedOrder.address}, {selectedOrder.city}
+                    {selectedOrder.Address}, {selectedOrder.City}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Service Type:</span>
-                  <Badge variant="outline">{selectedOrder.serviceType}</Badge>
+                  <Badge variant="outline">{selectedOrder.Service_Type}</Badge>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Priority:</span>
-                  <Badge 
-                    variant={
-                      selectedOrder.priority === 'urgent' ? 'destructive' :
-                      selectedOrder.priority === 'high' ? 'default' :
-                      'secondary'
-                    }
-                  >
-                    {selectedOrder.priority}
-                  </Badge>
-                </div>
+                {selectedOrder.Priority && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Priority:</span>
+                    <Badge 
+                      variant={
+                        selectedOrder.Priority === 'urgent' ? 'destructive' :
+                        selectedOrder.Priority === 'high' ? 'default' :
+                        'secondary'
+                      }
+                    >
+                      {selectedOrder.Priority}
+                    </Badge>
+                  </div>
+                )}
               </div>
-              {selectedOrder.specialInstructions && (
+              {selectedOrder.Special_Instructions && (
                 <div className="rounded-lg bg-muted p-3">
-                  <p className="text-sm font-medium mb-1">Special Instructions:</p>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedOrder.specialInstructions}
-                  </p>
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium mb-1">Special Instructions:</p>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedOrder.Special_Instructions}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -280,7 +330,7 @@ export default function Dashboard() {
             </Button>
             <Button onClick={handleScheduleConfirm} className="gap-2">
               <Calendar className="w-4 h-4" />
-              Go to Calendar
+              Schedule Order
             </Button>
           </DialogFooter>
         </DialogContent>
