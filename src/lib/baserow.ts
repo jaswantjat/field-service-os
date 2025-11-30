@@ -13,6 +13,45 @@ if (!ORDERS_TABLE_ID) {
   console.warn("BASEROW_ORDERS_TABLE_ID is not set. Baserow API calls will fail.");
 }
 
+// Raw Baserow API response structure (as returned by the API)
+interface BaserowRawOrder {
+  id: number;
+  Order_ID?: string;
+  Status?: {
+    id: number;
+    value: string;
+    color: string;
+  } | null;
+  Customer_Name?: string;
+  Email?: string;
+  Phone?: string;
+  Address?: string;
+  City?: string;
+  Zip_Code?: string;
+  House_Type?: {
+    id: number;
+    value: string;
+    color: string;
+  } | null;
+  Kit_Received?: boolean;
+  Starlink_ID?: string;
+  Notes?: string;
+  Photo_URL?: Array<{
+    url: string;
+    visible_name: string;
+    name: string;
+    size: number;
+    mime_type: string;
+  }>;
+  Date?: string;
+  Availability?: string;
+  Cable_Distance?: string;
+  GPS_Link?: string;
+  Auth_Community?: string;
+  [key: string]: any;
+}
+
+// Normalized order structure for the app
 interface BaserowOrder {
   id: number;
   Customer_Name: string;
@@ -33,13 +72,48 @@ interface BaserowOrder {
   Inventory_Status?: string;
   Due_Date?: string;
   Created_At?: string;
+  // Additional Baserow-specific fields
+  Order_ID?: string;
+  Starlink_ID?: string;
+  Kit_Received?: boolean;
+  Photo_URL?: Array<{
+    url: string;
+    visible_name: string;
+  }>;
+  Availability?: string;
+  GPS_Link?: string;
 }
 
 interface BaserowListResponse {
   count: number;
   next: string | null;
   previous: string | null;
-  results: BaserowOrder[];
+  results: BaserowRawOrder[];
+}
+
+/**
+ * Transform raw Baserow response to normalized order structure
+ */
+function transformOrder(raw: BaserowRawOrder): BaserowOrder {
+  return {
+    id: raw.id,
+    Customer_Name: raw.Customer_Name || '',
+    Customer_Email: raw.Email,
+    Customer_Phone: raw.Phone,
+    Address: raw.Address || '',
+    City: raw.City || '',
+    Service_Type: raw.House_Type?.value || 'Standard',
+    Status: raw.Status?.value || 'Unknown',
+    Special_Instructions: raw.Notes,
+    Install_Date: raw.Date,
+    Inventory_Status: raw.Kit_Received ? 'In Stock' : 'Pending',
+    Order_ID: raw.Order_ID,
+    Starlink_ID: raw.Starlink_ID,
+    Kit_Received: raw.Kit_Received,
+    Photo_URL: raw.Photo_URL?.map(p => ({ url: p.url, visible_name: p.visible_name })),
+    Availability: raw.Availability,
+    GPS_Link: raw.GPS_Link,
+  };
 }
 
 /**
@@ -64,7 +138,7 @@ export async function getOrders(filters?: {
     if (filters?.status) {
       filterConditions.push({
         field: "Status",
-        type: "equal",
+        type: "contains",
         value: filters.status
       });
     }
@@ -112,11 +186,16 @@ export async function getOrders(filters?: {
     });
 
     if (!res.ok) {
-      throw new Error(`Baserow API error: ${res.status} ${res.statusText}`);
+      const errorText = await res.text();
+      throw new Error(`Baserow API error ${res.status}: ${errorText}`);
     }
 
     const data: BaserowListResponse = await res.json();
-    return data.results;
+    
+    // Transform and filter out empty rows
+    return data.results
+      .filter(row => row.Customer_Name && row.Customer_Name.trim() !== '')
+      .map(transformOrder);
   } catch (error) {
     console.error("Error fetching orders from Baserow:", error);
     throw error;
@@ -153,10 +232,12 @@ export async function getOrderById(orderId: number): Promise<BaserowOrder> {
     );
 
     if (!res.ok) {
-      throw new Error(`Baserow API error: ${res.status} ${res.statusText}`);
+      const errorText = await res.text();
+      throw new Error(`Baserow API error ${res.status}: ${errorText}`);
     }
 
-    return res.json();
+    const raw: BaserowRawOrder = await res.json();
+    return transformOrder(raw);
   } catch (error) {
     console.error("Error fetching order from Baserow:", error);
     throw error;
@@ -182,20 +263,16 @@ export async function scheduleOrder(
 
     const updateData: any = {};
     
-    if (data.status) {
-      updateData.Status = data.status;
-    }
-    
-    if (data.technicianName) {
-      updateData.Technician_Name = data.technicianName;
-    }
-    
+    // Map to actual Baserow field names
     if (data.installDate) {
-      updateData.Install_Date = data.installDate;
+      updateData.Date = data.installDate;
     }
     
-    if (data.timeSlot) {
-      updateData.Time_Slot = data.timeSlot;
+    // Note: Status and Technician fields might need to be updated based on your Baserow schema
+    // For now, we'll use Notes to track scheduling info
+    if (data.technicianName || data.status) {
+      const scheduleNote = `Scheduled: ${data.status || 'Assigned'} | Technician: ${data.technicianName || 'TBD'}`;
+      updateData.Notes = scheduleNote;
     }
 
     const res = await fetch(
@@ -211,10 +288,12 @@ export async function scheduleOrder(
     );
 
     if (!res.ok) {
-      throw new Error(`Baserow API error: ${res.status} ${res.statusText}`);
+      const errorText = await res.text();
+      throw new Error(`Baserow API error ${res.status}: ${errorText}`);
     }
 
-    return res.json();
+    const raw: BaserowRawOrder = await res.json();
+    return transformOrder(raw);
   } catch (error) {
     console.error("Error scheduling order in Baserow:", error);
     throw error;

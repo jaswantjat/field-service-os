@@ -22,7 +22,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { authClient, useSession } from '@/lib/auth-client'
-import { Truck, Loader2, LogOut, Calendar, MapPin, AlertCircle } from 'lucide-react'
+import { Truck, Loader2, LogOut, Calendar, MapPin, AlertCircle, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface BaserowOrder {
@@ -32,19 +32,19 @@ interface BaserowOrder {
   Customer_Phone?: string
   Address: string
   City: string
-  Location_Lat?: number
-  Location_Lng?: number
   Service_Type: string
   Status: string
-  Priority?: string
-  Partner_Assigned?: string
-  Technician_Name?: string
-  Install_Date?: string
-  Estimated_Duration?: number
   Special_Instructions?: string
-  Inventory_Status?: string
-  Due_Date?: string
-  Created_At?: string
+  Order_ID?: string
+  Starlink_ID?: string
+  Kit_Received?: boolean
+  Photo_URL?: Array<{
+    url: string
+    visible_name: string
+  }>
+  Availability?: string
+  GPS_Link?: string
+  Install_Date?: string
 }
 
 export default function Dashboard() {
@@ -70,8 +70,8 @@ export default function Dashboard() {
   const fetchOrdersFromBaserow = async () => {
     setIsLoading(true)
     try {
-      // Call our API route that fetches from Baserow
-      const response = await fetch('/api/baserow/orders?status=Ready to Dispatch')
+      // Call our API route that fetches from Baserow (no status filter - show all)
+      const response = await fetch('/api/baserow/orders')
 
       if (!response.ok) {
         throw new Error('Failed to fetch orders from Baserow')
@@ -163,7 +163,7 @@ export default function Dashboard() {
                 <Truck className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h1 className="font-semibold">Dashboard - Ready to Dispatch</h1>
+                <h1 className="font-semibold">Baserow Orders Dashboard</h1>
                 <p className="text-sm text-muted-foreground">
                   Welcome, {session.user.name || session.user.email}
                 </p>
@@ -198,9 +198,9 @@ export default function Dashboard() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-2xl">Orders Ready to Dispatch</CardTitle>
+                <CardTitle className="text-2xl">Live Orders from Baserow</CardTitle>
                 <CardDescription>
-                  View and schedule orders from Baserow that are ready for field service
+                  Real-time data from your Railway-hosted Baserow instance
                 </CardDescription>
               </div>
               <Badge variant="secondary" className="text-lg px-4 py-2">
@@ -212,9 +212,9 @@ export default function Dashboard() {
             {orders.length === 0 ? (
               <div className="text-center py-12">
                 <Truck className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-semibold mb-2">No Orders Ready to Dispatch</h3>
+                <h3 className="text-lg font-semibold mb-2">No Orders Found</h3>
                 <p className="text-muted-foreground">
-                  All orders have been scheduled or there are no pending orders in Baserow.
+                  There are no orders in your Baserow table yet.
                 </p>
               </div>
             ) : (
@@ -223,8 +223,9 @@ export default function Dashboard() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[100px]">Order ID</TableHead>
-                      <TableHead>Customer Name</TableHead>
+                      <TableHead>Customer</TableHead>
                       <TableHead>City</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Service Type</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -232,9 +233,20 @@ export default function Dashboard() {
                   <TableBody>
                     {orders.map((order) => (
                       <TableRow key={order.id}>
-                        <TableCell className="font-medium">#{order.id}</TableCell>
+                        <TableCell className="font-medium">
+                          {order.Order_ID || `#${order.id}`}
+                        </TableCell>
                         <TableCell>{order.Customer_Name}</TableCell>
                         <TableCell>{order.City}</TableCell>
+                        <TableCell>
+                          <Badge variant={
+                            order.Status.includes('Pending') ? 'destructive' :
+                            order.Status.includes('Scheduled') ? 'default' :
+                            'secondary'
+                          }>
+                            {order.Status}
+                          </Badge>
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline">{order.Service_Type}</Badge>
                         </TableCell>
@@ -245,7 +257,7 @@ export default function Dashboard() {
                             className="gap-2"
                           >
                             <Calendar className="w-4 h-4" />
-                            Schedule
+                            View Details
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -258,63 +270,99 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Schedule Dialog */}
+      {/* Order Details Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Schedule Order</DialogTitle>
+            <DialogTitle>Order Details</DialogTitle>
             <DialogDescription>
-              Review order details before scheduling in Baserow
+              View and manage order from Baserow
             </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
             <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Order ID:</span>
-                  <span className="text-sm">#{selectedOrder.id}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Customer:</span>
-                  <span className="text-sm">{selectedOrder.Customer_Name}</span>
-                </div>
-                {selectedOrder.Customer_Phone && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Phone:</span>
-                    <span className="text-sm">{selectedOrder.Customer_Phone}</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-muted-foreground">Order ID</span>
+                    <span className="text-sm font-mono">{selectedOrder.Order_ID || `#${selectedOrder.id}`}</span>
                   </div>
-                )}
-                <div className="flex items-start justify-between">
-                  <span className="text-sm font-medium">Address:</span>
-                  <span className="text-sm text-right max-w-[200px]">
-                    {selectedOrder.Address}, {selectedOrder.City}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Service Type:</span>
-                  <Badge variant="outline">{selectedOrder.Service_Type}</Badge>
-                </div>
-                {selectedOrder.Priority && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Priority:</span>
-                    <Badge 
-                      variant={
-                        selectedOrder.Priority === 'urgent' ? 'destructive' :
-                        selectedOrder.Priority === 'high' ? 'default' :
-                        'secondary'
-                      }
-                    >
-                      {selectedOrder.Priority}
-                    </Badge>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-muted-foreground">Customer</span>
+                    <span className="text-sm">{selectedOrder.Customer_Name}</span>
                   </div>
-                )}
+                  {selectedOrder.Customer_Phone && (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-muted-foreground">Phone</span>
+                      <span className="text-sm">{selectedOrder.Customer_Phone}</span>
+                    </div>
+                  )}
+                  {selectedOrder.Customer_Email && (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-muted-foreground">Email</span>
+                      <span className="text-sm">{selectedOrder.Customer_Email}</span>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-muted-foreground">Status</span>
+                    <Badge variant="outline">{selectedOrder.Status}</Badge>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-muted-foreground">Service Type</span>
+                    <Badge variant="secondary">{selectedOrder.Service_Type}</Badge>
+                  </div>
+                  {selectedOrder.Starlink_ID && (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-muted-foreground">Starlink ID</span>
+                      <span className="text-sm font-mono">{selectedOrder.Starlink_ID}</span>
+                    </div>
+                  )}
+                  {selectedOrder.Kit_Received !== undefined && (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-muted-foreground">Kit Status</span>
+                      <Badge variant={selectedOrder.Kit_Received ? 'default' : 'destructive'}>
+                        {selectedOrder.Kit_Received ? 'Received' : 'Pending'}
+                      </Badge>
+                    </div>
+                  )}
+                </div>
               </div>
+
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">Address</span>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-sm">{selectedOrder.Address}, {selectedOrder.City}</span>
+                  {selectedOrder.GPS_Link && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1 h-7"
+                      onClick={() => window.open(selectedOrder.GPS_Link, '_blank')}
+                    >
+                      <MapPin className="w-3 h-3" />
+                      Map
+                      <ExternalLink className="w-3 h-3" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {selectedOrder.Availability && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted-foreground">Availability</span>
+                  <span className="text-sm">{selectedOrder.Availability}</span>
+                </div>
+              )}
+
               {selectedOrder.Special_Instructions && (
                 <div className="rounded-lg bg-muted p-3">
                   <div className="flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium mb-1">Special Instructions:</p>
+                    <AlertCircle className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-xs font-medium mb-1">Special Instructions:</p>
                       <p className="text-sm text-muted-foreground">
                         {selectedOrder.Special_Instructions}
                       </p>
@@ -322,11 +370,37 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
+
+              {selectedOrder.Photo_URL && selectedOrder.Photo_URL.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-xs font-medium text-muted-foreground">Photos</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedOrder.Photo_URL.map((photo, idx) => (
+                      <a
+                        key={idx}
+                        href={photo.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative aspect-video rounded-lg overflow-hidden border hover:opacity-80 transition-opacity"
+                      >
+                        <img
+                          src={photo.url}
+                          alt={photo.visible_name}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity">
+                          <ExternalLink className="w-6 h-6 text-white" />
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancel
+              Close
             </Button>
             <Button onClick={handleScheduleConfirm} className="gap-2">
               <Calendar className="w-4 h-4" />
