@@ -6,19 +6,19 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
 import { authClient, useSession } from '@/lib/auth-client'
 import { Truck, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter()
   const { data: session, isPending } = useSession()
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
+    name: '',
     email: '',
     password: '',
-    rememberMe: false
+    confirmPassword: ''
   })
 
   // Redirect if already logged in
@@ -31,31 +31,43 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.email || !formData.password) {
+    if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
       toast.error('Please fill in all fields')
+      return
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      toast.error('Passwords do not match')
+      return
+    }
+
+    if (formData.password.length < 8) {
+      toast.error('Password must be at least 8 characters long')
       return
     }
 
     setIsLoading(true)
     
     try {
-      const { error } = await authClient.signIn.email({
+      const { error } = await authClient.signUp.email({
         email: formData.email,
-        password: formData.password,
-        rememberMe: formData.rememberMe,
-        callbackURL: '/dashboard'
+        name: formData.name,
+        password: formData.password
       })
 
       if (error?.code) {
-        toast.error('Invalid email or password. Please make sure you have already registered an account and try again.')
+        const errorMap: Record<string, string> = {
+          USER_ALREADY_EXISTS: "Email already registered"
+        }
+        toast.error(errorMap[error.code] || "Registration failed")
         return
       }
 
-      toast.success('Login successful!')
-      router.push('/dashboard')
+      toast.success('Account created successfully! Please sign in.')
+      router.push('/?registered=true')
     } catch (error) {
-      toast.error('An error occurred during login')
-      console.error('Login error:', error)
+      toast.error('An error occurred during registration')
+      console.error('Registration error:', error)
     } finally {
       setIsLoading(false)
     }
@@ -82,13 +94,26 @@ export default function LoginPage() {
               <Truck className="w-10 h-10 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl">Field Service Portal</CardTitle>
+          <CardTitle className="text-2xl">Create Account</CardTitle>
           <CardDescription>
-            Sign in to access your subcontractor dashboard
+            Sign up to access the Field Service Portal
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="John Doe"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                disabled={isLoading}
+                autoComplete="name"
+                required
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -107,7 +132,7 @@ export default function LoginPage() {
               <Input
                 id="password"
                 type="password"
-                placeholder="Enter your password"
+                placeholder="At least 8 characters"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 disabled={isLoading}
@@ -115,21 +140,18 @@ export default function LoginPage() {
                 required
               />
             </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="remember"
-                checked={formData.rememberMe}
-                onCheckedChange={(checked) => 
-                  setFormData({ ...formData, rememberMe: checked as boolean })
-                }
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                placeholder="Re-enter your password"
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                 disabled={isLoading}
+                autoComplete="off"
+                required
               />
-              <Label 
-                htmlFor="remember" 
-                className="text-sm font-normal cursor-pointer"
-              >
-                Remember me
-              </Label>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
@@ -142,22 +164,22 @@ export default function LoginPage() {
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Signing in...
+                  Creating account...
                 </>
               ) : (
-                'Sign In'
+                'Create Account'
               )}
             </Button>
             <p className="text-sm text-center text-muted-foreground">
-              Don't have an account?{' '}
+              Already have an account?{' '}
               <Button
                 type="button"
                 variant="link"
                 className="p-0 h-auto font-normal"
-                onClick={() => router.push('/register')}
+                onClick={() => router.push('/')}
                 disabled={isLoading}
               >
-                Create an account
+                Sign in
               </Button>
             </p>
           </CardFooter>

@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { authClient, useSession } from '@/lib/auth-client'
 import { Order } from '@/types'
 import { 
   MapPin, 
@@ -16,11 +17,13 @@ import {
   CheckCircle2, 
   Search,
   Filter,
-  Calendar,
   Truck,
-  CheckSquare
+  CheckSquare,
+  LogOut,
+  Loader2
 } from 'lucide-react'
 import { format } from 'date-fns'
+import { toast } from 'sonner'
 
 const priorityColors = {
   low: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
@@ -36,6 +39,8 @@ const inventoryStatusColors = {
 }
 
 export default function SubcontractorPortal() {
+  const router = useRouter()
+  const { data: session, isPending, refetch } = useSession()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedJobs, setSelectedJobs] = useState<Set<number>>(new Set())
@@ -48,9 +53,30 @@ export default function SubcontractorPortal() {
   const [priorityFilter, setPriorityFilter] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Redirect if not authenticated
   useEffect(() => {
-    fetchAvailableJobs()
-  }, [cityFilter, serviceTypeFilter, priorityFilter])
+    if (!isPending && !session?.user) {
+      router.push('/')
+    }
+  }, [session, isPending, router])
+
+  useEffect(() => {
+    if (session?.user) {
+      fetchAvailableJobs()
+    }
+  }, [cityFilter, serviceTypeFilter, priorityFilter, session])
+
+  const handleSignOut = async () => {
+    const { error } = await authClient.signOut()
+    if (error?.code) {
+      toast.error(error.code)
+    } else {
+      localStorage.removeItem("bearer_token")
+      refetch()
+      router.push('/')
+      toast.success('Signed out successfully')
+    }
+  }
 
   const fetchAvailableJobs = async () => {
     setLoading(true)
@@ -75,7 +101,6 @@ export default function SubcontractorPortal() {
   const handleClaimJob = async (orderId: number) => {
     setClaiming(orderId)
     try {
-      // First, create a time slot for this order
       const tomorrow = new Date()
       tomorrow.setDate(tomorrow.getDate() + 1)
       const slotDate = tomorrow.toISOString().split('T')[0]
@@ -99,7 +124,6 @@ export default function SubcontractorPortal() {
 
       const timeSlot = await timeSlotResponse.json()
 
-      // Then claim the time slot (using subcontractor ID 1 for demo)
       const claimResponse = await fetch(`/api/time-slots/${timeSlot.id}/claim`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,17 +133,17 @@ export default function SubcontractorPortal() {
       })
 
       if (claimResponse.ok) {
-        // Remove from available jobs
         setOrders(orders.filter(o => o.id !== orderId))
         setSelectedJobs(prev => {
           const newSet = new Set(prev)
           newSet.delete(orderId)
           return newSet
         })
+        toast.success('Job claimed successfully!')
       }
     } catch (error) {
       console.error('Failed to claim job:', error)
-      alert('Failed to claim job. Please try again.')
+      toast.error('Failed to claim job. Please try again.')
     } finally {
       setClaiming(null)
     }
@@ -137,8 +161,10 @@ export default function SubcontractorPortal() {
       }
       
       setSelectedJobs(new Set())
+      toast.success(`Successfully claimed ${jobIds.length} job(s)`)
     } catch (error) {
       console.error('Batch claim failed:', error)
+      toast.error('Batch claim failed')
     } finally {
       setBatchClaiming(false)
     }
@@ -170,6 +196,18 @@ export default function SubcontractorPortal() {
   const uniqueCities = Array.from(new Set(orders.map(o => o.city)))
   const uniqueServiceTypes = Array.from(new Set(orders.map(o => o.serviceType)))
 
+  if (isPending) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (!session?.user) {
+    return null
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -179,7 +217,7 @@ export default function SubcontractorPortal() {
             <div>
               <h1 className="text-3xl font-bold">Subcontractor Portal</h1>
               <p className="text-muted-foreground mt-1">
-                Pull-based job board - Claim jobs instantly
+                Welcome, {session.user.name || session.user.email}
               </p>
             </div>
             <div className="flex items-center gap-4">
@@ -187,6 +225,14 @@ export default function SubcontractorPortal() {
                 <Truck className="w-4 h-4 mr-2" />
                 {filteredOrders.length} Available Jobs
               </Badge>
+              <Button
+                variant="outline"
+                onClick={handleSignOut}
+                className="gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </Button>
             </div>
           </div>
         </div>
