@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
 
 export async function middleware(request: NextRequest) {
-  const session = await auth.api.getSession({ headers: await headers() });
+  // Check for bearer token in Authorization header or cookie
+  const authHeader = request.headers.get("authorization");
+  const token = authHeader?.replace("Bearer ", "");
+  const cookieToken = request.cookies.get("better-auth.session_token")?.value;
   
-  // If no session exists, redirect to login
-  if (!session) {
+  // If no token exists in either location, redirect to login
+  if (!token && !cookieToken) {
     return NextResponse.redirect(new URL('/', request.url));
   }
   

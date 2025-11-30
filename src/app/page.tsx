@@ -13,7 +13,7 @@ import { toast } from 'sonner'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { data: session, isPending } = useSession()
+  const { data: session, isPending, refetch } = useSession()
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
     email: '',
@@ -42,21 +42,27 @@ export default function LoginPage() {
       const { error } = await authClient.signIn.email({
         email: formData.email,
         password: formData.password,
-        rememberMe: formData.rememberMe,
-        callbackURL: '/dashboard'
+        rememberMe: formData.rememberMe
       })
 
       if (error?.code) {
         toast.error('Invalid email or password. Please make sure you have already registered an account and try again.')
+        setIsLoading(false)
         return
       }
 
+      // CRITICAL: Refetch session to ensure it's established before redirecting
+      await refetch()
+      
       toast.success('Login successful!')
-      router.push('/dashboard')
+      
+      // Small delay to ensure session is fully propagated
+      setTimeout(() => {
+        router.push('/dashboard')
+      }, 100)
     } catch (error) {
       toast.error('An error occurred during login')
       console.error('Login error:', error)
-    } finally {
       setIsLoading(false)
     }
   }
