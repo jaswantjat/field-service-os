@@ -6,7 +6,7 @@ import { eq, like, and, or, desc, sql } from 'drizzle-orm';
 const VALID_SERVICE_TYPES = ['Installation', 'Delivery', 'Repair'];
 const VALID_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 const VALID_INVENTORY_STATUSES = ['available', 'partial', 'pending'];
-const VALID_STATUSES = ['unassigned', 'claimed', 'scheduled', 'in_progress', 'completed', 'cancelled'];
+const VALID_STATUSES = ['unassigned', 'claimed', 'scheduled', 'in_progress', 'completed', 'cancelled', 'Ready to Dispatch'];
 
 const PRIORITY_ORDER: Record<string, number> = {
   urgent: 1,

@@ -27,7 +27,7 @@ export const orders = sqliteTable('orders', {
   priority: text('priority').notNull().default('medium'),
   estimatedDuration: integer('estimated_duration').notNull(),
   specialInstructions: text('special_instructions'),
-  status: text('status').notNull().default('unassigned'),
+  status: text('status').notNull().default('unassigned'), // Valid values: 'unassigned', 'claimed', 'scheduled', 'in_progress', 'completed', 'cancelled', 'Ready to Dispatch'
   createdAt: text('created_at').notNull(),
   dueDate: text('due_date').notNull(),
 });
